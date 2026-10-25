@@ -80,7 +80,7 @@ Filling in a provider's credentials does not switch its mode: set `ALIPAY_MODE=s
 3. Copy the **支付宝公钥 (Alipay public key)** shown there — *not* your app public key. → `ALIPAY_PUBLIC_KEY`
 4. Note the sandbox **seller/merchant PID (2088…)** if you want `seller_id` checked. → `ALIPAY_SELLER_ID` (optional; once set, every notification must carry exactly this value, so leave it empty unless you are sure)
 5. Set the **授权回调地址 (authorisation redirect URI)** to `https://<your-tunnel>/api/auth/alipay/callback`. For user-info login the **domain** of `redirect_uri` must match this value, so update it whenever the tunnel host changes.
-6. **沙箱账号**: note the sandbox **buyer** account and its login / payment password. Both the sandbox login page (tab **账密登录**) and the PC cashier accept it, so no phone is needed. The optional sandbox Alipay app (**沙箱工具**) runs on Android 7–13 only, not iOS or emulators; it is only needed to scan QR codes.
+6. **沙箱账号**: note the sandbox **buyer** account and its login / payment password. Both the sandbox login page (tab **账密登录**) and the PC cashier accept it, so no phone is needed. The optional sandbox Alipay app (**沙箱工具**) runs on Android 7–13 only, not iOS or emulators; it is only needed to scan QR codes. Alipay picks the authorisation page by user agent: in a phone browser the sandbox serves its H5 flow, which only works inside that app ("请在支付宝客户端打开链接"). On an iPhone, sign in on a computer or request the desktop site; the login page says so on small screens.
 7. In `.env.local`:
 
 ```dotenv
