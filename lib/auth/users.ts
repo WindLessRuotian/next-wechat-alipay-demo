@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db, schema, withWriteTransaction } from "@/lib/db";
 import type { Provider, User } from "@/lib/db/schema";
+import { providerLabel } from "@/lib/ui";
 
 export interface ProviderProfile {
   provider: Provider;
@@ -63,7 +64,7 @@ export async function upsertUserFromProfile(p: ProviderProfile, linkToUserId?: s
       if (clash) throw new LinkError("provider_already_linked");
     } else {
       userId = crypto.randomUUID();
-      await tx.insert(schema.users).values({ id: userId, name: p.nickname || `${p.provider} user`, avatarUrl: p.avatarUrl ?? null }).run();
+      await tx.insert(schema.users).values({ id: userId, name: p.nickname || `${providerLabel(p.provider)}用户`, avatarUrl: p.avatarUrl ?? null }).run();
     }
 
     await tx
