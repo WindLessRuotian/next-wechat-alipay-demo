@@ -289,7 +289,11 @@ Never show `.env.local` or `.mock-keys/` in the recording. Record the Alipay par
 - Single-process SQLite; for multiple instances move to Postgres and keep the same transactional pattern.
 - No rate limiting on login/notify endpoints; notify IP allow-listing not implemented.
 - Not in scope: refunds, JSAPI / in-WeChat browser login (bonus), Mini Programs.
-- Alipay sandbox login has been run through a Cloudflare tunnel (2026-10-25): `state` check, `auth_code` → token and sign-in work. At that time the sandbox member-info service (`alipay.user.info.share`) answered `aop.unknow-error`, so the fallback signed users in without nickname or avatar. Sandbox payment with the notification over the tunnel has not been run yet.
+- Alipay sandbox, verified end to end through a Cloudflare tunnel on 2026-10-25 (times UTC, evidence from `orders` / `payment_events` in `dev.db`):
+  - **Login:** the `state` check, `auth_code` → token and sign-in all work. The sandbox member-info service (`alipay.user.info.share`) kept answering `aop.unknow-error`, so the fallback signed users in without nickname or avatar; they fill in once that service recovers.
+  - **Payment:** order `d55b2a3a…` (0.01 CNY) was created at 17:06:36 and paid in the sandbox cashier with the buyer account. Alipay's async notification reached the tunnel, passed RSA2 verification and was recorded as `source = notify`, `event_type = TRADE_SUCCESS`, `outcome = applied`; the order became `paid` with `paid_at` 17:06:51. The 28-digit trade number (`20261026…`) and the 34-character `notify_id` (`2026102601…`) have Alipay's real formats, not the mock's.
+  - **Expiry:** order `213c4495…` opened the cashier and was left unpaid. About 23 s after its 15-minute deadline it closed through the order query (`QUERY.TRADE_CLOSED`, `applied`).
+  - **Not yet run in the sandbox:** a user-initiated cancel (`alipay.trade.close` on a live trade) and mobile web payment (`alipay.trade.wap.pay`, bonus).
 
 ## Docker
 
