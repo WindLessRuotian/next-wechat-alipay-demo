@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { alipayConfig } from "@/lib/alipay/config";
+import { signNotifyAsAlipay, type Params } from "@/lib/alipay/sign";
+import { loadPrivateKey } from "@/lib/crypto";
 import { db, schema } from "@/lib/db";
 import { buildMockAlipayNotify } from "@/lib/mock/alipay-provider";
+import { mockKeys } from "@/lib/mock/keys";
 import { buildMockWechatSuccessNotify, failMockWechatTrade } from "@/lib/mock/wechat-provider";
 import { handleAlipayNotify } from "@/lib/payments/alipay";
 import { applyVerifiedEvent } from "@/lib/payments/orders";
@@ -135,6 +139,36 @@ describe("Alipay notify handler", () => {
     const order = await alipayOrder();
     await handleAlipayNotify(await body(order.outTradeNo, "TRADE_CLOSED"));
     expect((await reload(order.id)).status).toBe("closed");
+  });
+
+  describe("with seller_id configured", () => {
+    /** Edit the notification, then sign it again with the mock Alipay key, so only seller_id is wrong. */
+    const resigned = async (outTradeNo: string, edit: (p: Params) => void) => {
+      const p = (await buildMockAlipayNotify(outTradeNo, "TRADE_SUCCESS"))!;
+      edit(p);
+      return new URLSearchParams(signNotifyAsAlipay(p, loadPrivateKey(mockKeys().alipayPlatform.privateKey))).toString();
+    };
+
+    it("accepts the configured seller_id", async () => {
+      expect(alipayConfig().sellerId).toBeTruthy();
+      const order = await alipayOrder();
+      expect((await handleAlipayNotify(await resigned(order.outTradeNo, () => {}))).body).toBe("success");
+      expect((await reload(order.id)).status).toBe("paid");
+    });
+
+    it("replies 'fail' when seller_id is missing and changes nothing", async () => {
+      const order = await alipayOrder();
+      expect((await handleAlipayNotify(await resigned(order.outTradeNo, (p) => delete p.seller_id))).body).toBe("fail");
+      expect((await reload(order.id)).status).toBe("pending");
+      expect(await eventsFor(order.outTradeNo)).toHaveLength(0);
+    });
+
+    it("replies 'fail' for another seller_id and changes nothing", async () => {
+      const order = await alipayOrder();
+      expect((await handleAlipayNotify(await resigned(order.outTradeNo, (p) => (p.seller_id = "2088999999999999")))).body).toBe("fail");
+      expect((await reload(order.id)).status).toBe("pending");
+      expect(await eventsFor(order.outTradeNo)).toHaveLength(0);
+    });
   });
 });
 

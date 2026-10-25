@@ -36,7 +36,7 @@ export function parseFormBody(raw: string): Params {
 /**
  * Alipay async notification handler (framework-agnostic, unit-tested).
  *  1. verify RSA2 signature (drop sign & sign_type, sort, k=v&…) with the Alipay public key
- *  2. check app_id (and seller_id if configured)
+ *  2. check app_id (and seller_id if configured: then it must be present and equal)
  *  3. check out_trade_no exists and total_amount equals the stored amount
  *  4. apply idempotently, keyed by notify_id
  *  5. reply "success" (plain text); anything else makes Alipay retry
@@ -54,8 +54,8 @@ export async function handleAlipayNotify(rawBody: string): Promise<HttpReply> {
     log.error("alipay.notify_app_mismatch", { appId: params.app_id });
     return FAILURE;
   }
-  if (cfg.sellerId && params.seller_id && params.seller_id !== cfg.sellerId) {
-    log.error("alipay.notify_seller_mismatch", { outTradeNo: params.out_trade_no });
+  if (cfg.sellerId && params.seller_id !== cfg.sellerId) {
+    log.error("alipay.notify_seller_mismatch", { outTradeNo: params.out_trade_no, present: !!params.seller_id });
     return FAILURE;
   }
   if (!params.notify_id || !params.out_trade_no || !params.trade_status) {
