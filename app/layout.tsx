@@ -1,44 +1,18 @@
-import type { Metadata } from "next";
-import Link from "next/link";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { env } from "@/lib/env";
-import { getSession } from "@/lib/auth/session";
+import { BRAND } from "@/lib/ui";
 
 export const metadata: Metadata = {
-  title: "WeChat & Alipay Integration Demo",
-  description: "Next.js trial task: WeChat / Alipay login and payment",
+  title: { default: `${BRAND} · 微信与支付宝登录支付演示`, template: `%s · ${BRAND}` },
+  description: "Next.js 微信 / 支付宝登录与支付集成演示：服务端下单、异步通知验签、幂等处理与 Mock 模式。",
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const e = env();
-  const session = await getSession();
-  const mocked = [e.wechatMode === "mock" && "WeChat", e.alipayMode === "mock" && "Alipay"].filter(Boolean);
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#2563eb" };
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body>
-        {mocked.length > 0 && (
-          <div className="mock-banner" role="status">
-            MOCK MODE — {mocked.join(" & ")} simulated locally · WeChat: {e.wechatMode} · Alipay: {e.alipayMode}
-          </div>
-        )}
-        <header className="top">
-          <Link className="brand" href="/">
-            Pay Demo
-          </Link>
-          {session && (
-            <nav>
-              <Link href="/dashboard">Dashboard</Link>
-              <Link href="/orders">Orders</Link>
-              <form action="/api/auth/logout" method="post">
-                <button className="linkbtn" type="submit">
-                  Log out
-                </button>
-              </form>
-            </nav>
-          )}
-        </header>
-        <main>{children}</main>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
