@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import MockConsentForm from "@/components/MockConsentForm";
+import { ChannelIcon, Hint, PageHeading } from "@/components/ui/primitives";
 import { isMockProvider, PERSONAS, safeRedirectUri } from "@/lib/mock/authorize";
+import { mockAvatar } from "@/lib/mock/oauth";
+import { providerLabel } from "@/lib/ui";
+
+export const metadata: Metadata = { title: "模拟账号授权" };
 
 /**
  * MOCK provider consent screen — stands in for open.weixin.qq.com/connect/qrconnect
@@ -17,42 +24,40 @@ export default async function MockAuthorize({
   if (!isMockProvider(provider)) notFound();
   const q = await searchParams;
   const redirectUri = safeRedirectUri(q.redirect_uri, provider);
-  if (!redirectUri) return <p className="alert error">redirect_uri is not registered for this (mock) app.</p>;
-  const label = provider === "wechat" ? "WeChat" : "Alipay";
-  const action = `/api/mock/oauth/${provider}/authorize`;
-  const hidden = (
-    <>
-      <input type="hidden" name="redirect_uri" value={redirectUri.toString()} />
-      <input type="hidden" name="state" value={q.state ?? ""} />
-    </>
-  );
+  const label = providerLabel(provider);
 
   return (
     <>
-      <h1>Mock {label} authorisation</h1>
-      <p className="muted">
-        In sandbox/live mode this is the provider&apos;s own page ({provider === "wechat" ? "a QR code on open.weixin.qq.com" : "Alipay's authorisation page"}). Pick a
-        fake user to return to the app&apos;s real callback route.
-      </p>
-      <div className="card stack">
-        {PERSONAS[provider].map((p) => (
-          <form key={p.name} action={action} method="post" className="row">
-            {hidden}
-            <input type="hidden" name="nickname" value={p.name} />
-            <input type="hidden" name="hue" value={p.hue} />
-            <button className={`btn ${provider}`} name="decision" value="allow">
-              Authorise as “{p.name}”
-            </button>
-          </form>
-        ))}
-        <form action={action} method="post">
-          {hidden}
-          <button className="btn" name="decision" value="deny">
-            Deny
-          </button>
-        </form>
-        <p className="mono muted" style={{ margin: 0 }}>state = {q.state}</p>
-      </div>
+      <PageHeading title="模拟账号授权" desc="在本地体验官方授权回调的完整路径。" />
+      <section className="card auth-card">
+        <div className="auth-heading">
+          <ChannelIcon provider={provider} size="lg" />
+          <h2>{label} Mock 授权</h2>
+          <p className="caption">不是{label}官方授权页，不读取你的真实账号</p>
+        </div>
+        <div className="pad">
+          {redirectUri ? (
+            <>
+              <Hint tone="amber">仅使用虚拟身份。正式环境将跳转{provider === "wechat" ? "微信开放平台的扫码授权页" : "支付宝官方授权页"}。</Hint>
+              <MockConsentForm
+                action={`/api/mock/oauth/${provider}/authorize`}
+                redirectUri={redirectUri.toString()}
+                state={q.state ?? ""}
+                personas={PERSONAS[provider].map((p) => ({ ...p, avatar: mockAvatar(p.name, p.hue) }))}
+              />
+            </>
+          ) : (
+            <Hint tone="red" icon="shield">
+              redirect_uri 未登记：Mock 授权只会回到本应用自己的回调地址，请从登录页重新发起。
+            </Hint>
+          )}
+        </div>
+      </section>
+      {q.state && (
+        <p className="auth-context">
+          state = <span className="mono">{q.state}</span>
+        </p>
+      )}
     </>
   );
 }
