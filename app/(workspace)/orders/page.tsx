@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { toOrderRow } from "@/components/OrderList";
+import OrdersBrowser from "@/components/OrdersBrowser";
+import { Icon } from "@/components/ui/Icon";
+import { Hint, PageHeading } from "@/components/ui/primitives";
 import { requireSession } from "@/lib/auth/session";
 import { getOrderByOutTradeNo, listOrdersForUser } from "@/lib/payments/orders";
-import { formatCny, providerLabel } from "@/lib/ui";
+
+export const metadata: Metadata = { title: "我的订单" };
 
 /**
  * Also the Alipay return_url. The query string Alipay appends here is NOT used
@@ -17,43 +23,23 @@ export default async function Orders({ searchParams }: { searchParams: Promise<{
     if (o && o.userId === user.id) redirect(`/orders/${o.id}?from=return`);
   }
   const orders = await listOrdersForUser(user.id);
+
   return (
     <>
-      <h1>Your orders</h1>
-      <section className="card table-wrap">
-        {orders.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
-            No orders yet. <Link href="/checkout">Buy the test item</Link>.
-          </p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Created</th>
-                <th>Order no.</th>
-                <th>Provider</th>
-                <th>Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id}>
-                  <td>{o.createdAt.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
-                  <td className="mono">
-                    <Link href={`/orders/${o.id}`}>{o.outTradeNo}</Link>
-                  </td>
-                  <td>{providerLabel(o.provider)}</td>
-                  <td>{formatCny(o.amountFen)}</td>
-                  <td>
-                    <span className={`badge ${o.status}`}>{o.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <PageHeading
+        title="我的订单"
+        desc="查看当前账号的全部交易，追踪每一笔支付进度。"
+        extra={
+          <Link className="btn primary" href="/checkout">
+            <Icon name="bag" />
+            购买体验商品
+          </Link>
+        }
+      />
+      <OrdersBrowser orders={orders.map(toOrderRow)} />
+      <Hint icon="shield" className="list-footnote">
+        仅展示当前账号的订单。支付状态以服务端通知或主动查单结果为准。
+      </Hint>
     </>
   );
 }
