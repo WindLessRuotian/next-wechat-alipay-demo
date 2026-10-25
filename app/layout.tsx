@@ -11,8 +11,11 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN">
-      <body>{children}</body>
+    // Browsers and extensions add attributes to <html>/<body> before React hydrates (e.g. iOS Edge/Chrome's
+    // __gcrremoteframetoken, Immersive Translate's data-immersive-translate-page-theme). This silences
+    // attribute mismatches on these two elements only; their children are still checked.
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

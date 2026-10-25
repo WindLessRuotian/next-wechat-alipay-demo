@@ -28,6 +28,13 @@ function ModeHint({ wechat, alipay }: { wechat: ModeKey; alipay: ModeKey }) {
       {line("微信", wechat)}
       <br />
       {line("支付宝", alipay)}
+      {alipay === "sandbox" && (
+        // On phones Alipay serves its sandbox H5 authorisation only inside the sandbox app (Android 7–13).
+        <span className="mobile-only">
+          <br />
+          手机浏览器中，支付宝沙箱只能在沙箱版支付宝 App（仅 Android）里授权；iPhone 请在电脑上登录，或在浏览器菜单中请求桌面版网站后重试。
+        </span>
+      )}
     </Hint>
   );
 }
