@@ -9,7 +9,7 @@ A small Next.js (App Router, TypeScript strict) app where a user signs in with *
 | WeChat Pay v3 Native (QR) | implemented incl. request signing, response verification, notify decryption; **mock** by default |
 | Alipay `alipay.trade.page.pay` / `alipay.trade.wap.pay` | implemented; mock or **sandbox** |
 | Notify handlers (signature, amount check, idempotency, exact reply format) | both providers, unit-tested |
-| Order query fallback, 15-min expiry with provider-side close | both providers |
+| Order query fallback, 15-min expiry with provider-side close, 30 s background sweep (no page view needed) | both providers |
 | Account linking (bonus) | yes — link the other provider from the dashboard |
 | Docker (bonus) | `Dockerfile` included |
 
@@ -30,18 +30,24 @@ That is all. Nothing else to configure in mock mode:
 
 - the SQLite database (`dev.db`) is created and migrated automatically on first access;
 - mock key pairs (merchant key, "WeChat Pay public key", APIv3 key, Alipay app key, "Alipay public key") are generated locally into `.mock-keys/` (git-ignored) on first use;
-- a yellow **MOCK MODE** banner shows which providers are simulated.
+- a yellow **MOCK MODE · 模拟环境** strip on every page (login included) shows which providers are simulated.
 
 Other scripts: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run db:migrate`, `npm run db:generate`.
+
+On Windows PowerShell with script execution disabled (`npm.ps1 … cannot be loaded`), run the same commands as `npm.cmd …`. No policy change is needed.
 
 ### What "mock" means here
 
 Mock mode replaces **only the provider side**. Everything in the app runs exactly as in production:
 
 - Login: `/api/auth/<p>/login` sets the state cookie and redirects to a local consent page (`/mock/oauth/<p>`) that sends the user back to the **same** callback route with a single-use code and the original `state`.
-- WeChat Pay: the gateway returns a `weixin://wxpay/bizpayurl?pr=MOCK…` `code_url`, rendered as a QR code. **Simulate payment success** builds a real `TRANSACTION.SUCCESS` notification — resource encrypted with AEAD_AES_256_GCM using the APIv3 key, envelope signed with the mock platform private key — and **POSTs it over HTTP to `/api/pay/wechat/notify`**, so signature verification, decryption, amount check and idempotency are all exercised.
-- Alipay: the app builds a fully RSA2-signed `alipay.trade.page.pay` URL; the mock cashier (`/mock/alipay/gateway`) **verifies the merchant signature** before showing the order. **Simulate payment success** POSTs a form-encoded, RSA2-signed notification to `/api/pay/alipay/notify`. Order query / close / OAuth calls go through the real `AlipayClient` (signing + response-signature verification) with an in-process mock transport.
-- **Replay last notification** re-sends the byte-identical notification to demonstrate idempotency.
+- WeChat Pay: the gateway returns a `weixin://wxpay/bizpayurl?pr=MOCK…` `code_url`, rendered as a QR code (with a "MOCK" seal). **Simulate payment success** (模拟支付成功) builds a real `TRANSACTION.SUCCESS` notification — resource encrypted with AEAD_AES_256_GCM using the APIv3 key, envelope signed with the mock platform private key — and **POSTs it over HTTP to `/api/pay/wechat/notify`**, so signature verification, decryption, amount check and idempotency are all exercised.
+- Alipay: the app builds a fully RSA2-signed `alipay.trade.page.pay` URL; the mock cashier (`/mock/alipay/gateway`) **verifies the merchant signature** before showing the order. **Simulate payment success** (模拟付款成功) POSTs a form-encoded, RSA2-signed notification to `/api/pay/alipay/notify`. Order query / close / OAuth calls go through the real `AlipayClient` (signing + response-signature verification) with an in-process mock transport.
+- **Replay last notification** (重放通知) re-sends the byte-identical notification to demonstrate idempotency. The mock tools panel logs the notify route's exact reply (`HTTP 204 ""` / `"success"`).
+
+### UI
+
+The interface is branded **MockPAY** and written in Chinese. It is a light B2B workspace: a sidebar on desktop and a bottom tab bar under 760px. Pages: login (`/`), console (`/dashboard`: stats from the user's own orders, account linking, recent orders), checkout (`/checkout`), order list with status tabs, search and channel filter (`/orders`), order detail (`/orders/[id]`), plus the mock consent screen and mock Alipay cashier. After a WeChat Pay order is created, the Native QR code is shown on `/checkout?order=<id>` itself, as the brief asks; the detail page shows it too.
 
 ---
 
@@ -57,6 +63,8 @@ ALIPAY_MODE=sandbox     # real Alipay sandbox
 
 Configuration is validated with Zod when the server starts (`instrumentation.ts`). If a provider is not in mock mode, every missing credential is listed at once and the process exits with a clear message.
 
+Filling in a provider's credentials does not switch its mode: set `ALIPAY_MODE=sandbox` (or `WECHAT_MODE`) explicitly. `.env.local` is only read at start-up, so restart the server after editing it. The boot line `[config] OK — WeChat: …, Alipay: …, APP_URL=…` shows what is active.
+
 | Mode | WeChat | Alipay |
 |---|---|---|
 | `mock` | local simulation | local simulation |
@@ -68,11 +76,11 @@ Configuration is validated with Zod when the server starts (`instrumentation.ts`
 ## 3. Alipay sandbox setup
 
 1. Sign in to the Alipay Open Platform with a personal account → **控制台 → 沙箱 (Sandbox)**. A sandbox app with an `APPID` is created automatically. → `ALIPAY_APP_ID`
-2. **开发信息 → 接口加签方式 → 自定义密钥 → 公钥模式**. Generate an RSA2 (2048) key pair with the official *支付宝开放平台密钥工具*, upload the **app public key**, and keep the **app private key**. → `ALIPAY_PRIVATE_KEY` (bare base64 or PEM; PKCS#8 and PKCS#1 both accepted)
-3. After uploading, the console shows the **支付宝公钥 (Alipay public key)** — *not* your app public key. → `ALIPAY_PUBLIC_KEY`
-4. Note the sandbox **seller/merchant PID (2088…)** if you want `seller_id` checked. → `ALIPAY_SELLER_ID` (optional)
-5. Set the **授权回调地址 (authorisation redirect URI)** to `https://<your-tunnel>/api/auth/alipay/callback`.
-6. **沙箱账号**: note the sandbox **buyer** account and its login / payment password; log in to the cashier with it (or scan with the sandbox Alipay app).
+2. **开发信息 → 接口加签方式**. The new sandbox enables **系统默认密钥** by default: under **公钥模式 → 查看**, copy the **应用私钥** → `ALIPAY_PRIVATE_KEY` (bare base64 or PEM; PKCS#8 and PKCS#1 both accepted). To use your own keys instead, choose **自定义密钥 → 公钥模式**, generate an RSA2 (2048) pair with the official *支付宝开放平台密钥工具*, upload the app public key and keep the app private key.
+3. Copy the **支付宝公钥 (Alipay public key)** shown there — *not* your app public key. → `ALIPAY_PUBLIC_KEY`
+4. Note the sandbox **seller/merchant PID (2088…)** if you want `seller_id` checked. → `ALIPAY_SELLER_ID` (optional; once set, every notification must carry exactly this value, so leave it empty unless you are sure)
+5. Set the **授权回调地址 (authorisation redirect URI)** to `https://<your-tunnel>/api/auth/alipay/callback`. For user-info login the **domain** of `redirect_uri` must match this value, so update it whenever the tunnel host changes.
+6. **沙箱账号**: note the sandbox **buyer** account and its login / payment password. Both the sandbox login page (tab **账密登录**) and the PC cashier accept it, so no phone is needed. The optional sandbox Alipay app (**沙箱工具**) runs on Android 7–13 only, not iOS or emulators; it is only needed to scan QR codes.
 7. In `.env.local`:
 
 ```dotenv
@@ -85,7 +93,7 @@ ALIPAY_GATEWAY=https://openapi-sandbox.dl.alipaydev.com/gateway.do
 ALIPAY_AUTH_URL=https://openauth-sandbox.dl.alipaydev.com/oauth2/publicAppAuthorize.htm
 ```
 
-> ⚠️ Double-check `ALIPAY_AUTH_URL` against the authorisation link shown in your own sandbox console; Alipay moved its sandbox domains to `*.dl.alipaydev.com` and the gateway URL above is the one documented in the task. The value is configurable for exactly that reason.
+> Both URLs match Alipay's current sandbox docs (environment upgrade notes and the 获取会员信息 sandbox guide, checked 2026-10-25). They stay configurable in case Alipay moves its sandbox domains again, as it did when it moved them to `*.dl.alipaydev.com`.
 
 Keys never go into the repository: `.env*` (except `.env.example`), `certs/*`, `*.pem` and `.mock-keys/` are all git-ignored.
 
@@ -114,6 +122,8 @@ cloudflared tunnel --url http://localhost:3000   # → https://xxx.trycloudflare
 
 Then set `APP_URL=https://…` in `.env.local` and restart `npm run dev`. `WECHAT_PAY_NOTIFY_URL`, `ALIPAY_NOTIFY_URL` and `ALIPAY_RETURN_URL` expand `${APP_URL}` automatically. Open the app **through the tunnel URL** (cookies are bound to that origin; with https the session cookie becomes `__Host-sid` + `Secure`). Register the same host as the callback domain in each provider console.
 
+`next dev` only serves its dev assets to localhost; requests from any other host get `403`, which leaves pages without their scripts. `next.config.ts` therefore adds the host of `APP_URL` to `allowedDevOrigins`. A new tunnel host only needs a new `APP_URL` and a restart. The Cloudflare quick tunnel gets a new host on every run; ngrok's free tier shows a one-time browser warning page on its domain.
+
 ---
 
 ## 6. Flows
@@ -140,6 +150,8 @@ sequenceDiagram
 
 Signing in again with the same identity reuses the local user and refreshes its name and avatar: the dashboard's main profile follows the identity used for the most recent sign-in. Linking a second provider only adds that identity's `accounts` row, and an empty or missing field from the provider never clears a stored value.
 
+For Alipay, the signed `alipay.system.oauth.token` response is the identity. Nickname and avatar come from a separate member-info service (`alipay.user.info.share`). If that call fails (the sandbox returns `aop.unknow-error` at times), login still completes, `auth.profile_unavailable` is logged, and the next successful login fills the profile in. A failed `auth_code` exchange never signs anyone in. Every gateway call logs `alipay.api_call` with its method and latency, without parameters or tokens.
+
 ### Payment
 
 ```mermaid
@@ -154,7 +166,7 @@ sequenceDiagram
   alt WeChat Pay
     A->>P: POST /v3/pay/transactions/native (signed, time_expire)
     P-->>A: code_url (response signature verified)
-    A-->>B: order id → /orders/{id} renders QR
+    A-->>B: order id → /checkout?order={id} renders QR (also /orders/{id})
   else Alipay
     A-->>B: signed alipay.trade.page.pay URL (wap.pay on mobile) → redirect to cashier
   end
@@ -171,6 +183,8 @@ sequenceDiagram
 ```
 
 The browser redirect (Alipay `return_url`, or any client state) is **never** used to mark an order paid; `/orders?out_trade_no=…` only finds the order page.
+
+Nobody has to keep the order page open: a background sweep started at boot (`instrumentation-node.ts` → `startOrderSweeper`, every 30 s) closes overdue orders at the provider and locally, and queries the remaining pending ones to recover missed notifications. The console and order list also close the user's overdue orders before rendering, so they never show an expired order as pending.
 
 ---
 
@@ -215,7 +229,15 @@ app/
   api/pay/{wechat,alipay}/notify/route.ts              async notifications (thin wrappers)
   api/orders/[id]/route.ts, [id]/close/route.ts        polling + cancel
   api/mock/...                                         mock-provider endpoints (mock mode only)
-  page.tsx, dashboard/, checkout/, orders/, orders/[id]/, mock/
+  page.tsx                                             login (full-screen, no workspace shell)
+  (workspace)/layout.tsx                               signed-in shell: sidebar, top bar, environment strip
+  (workspace)/{dashboard,checkout,orders,orders/[id],mock/...}/page.tsx
+components/
+  shell/                    AppShell, navigation, per-provider environment strip
+  ui/                       icons, primitives (badge, money, steps…), native <dialog> modal
+  CheckoutClient.tsx        channel choice, order summary, Alipay redirect step
+  OrderPage.tsx, OrderStatusClient.tsx  QR, countdown, server polling, cancel, results, mock tools
+  OrdersBrowser.tsx         status tabs, search, channel filter, pagination
 lib/
   env.ts                    Zod config, per-provider modes
   db/schema.ts, db/index.ts users, accounts, sessions, orders, payment_events (+ mock tables)
@@ -227,9 +249,10 @@ lib/
   alipay/client.ts          page.pay, wap.pay, query, close, oauth.token, user.info.share
   payments/orders.ts        state machine + idempotent applyVerifiedEvent
   payments/{wechat,alipay}.ts  notify handlers (framework-agnostic, tested)
-  payments/sync.ts          query fallback, expiry, close
+  payments/sync.ts          query fallback, expiry, close, expireOverdueOrders / sweepPendingOrders
+  payments/sweeper.ts       30 s background sweep started from instrumentation
   mock/                     mock keys + mock provider behaviour
-tests/                      49 unit tests (signatures, decryption, notify handlers, idempotency, expiry, profiles, env)
+tests/                      57 unit tests (signatures, decryption, notify handlers, idempotency, expiry, sweep, profiles, Alipay login fallback, env)
 drizzle/                    SQL migrations
 ```
 
@@ -241,29 +264,32 @@ drizzle/                    SQL migrations
 - Alipay: sign-content construction (incl. the example string from Alipay's documentation), RSA2 notify verification (tampering, app-key forgery, non-RSA2, missing sign, form round-trip with non-ASCII), response-node extraction and verification.
 - Notify handlers: paid + exact reply, **same notification twice → one update**, **5 concurrent deliveries → one update**, second distinct notification ignored, bad signature leaves order pending, amount mismatch rejected, Alipay `TRADE_CLOSED`, Alipay `seller_id` missing or foreign → `fail` (validly signed).
 - Users: re-login updates the same local user's profile, missing fields keep stored values, linking leaves the main profile alone.
+- Alipay login: profile from token + member info, login still succeeds when member info fails (stored nickname kept, new users get a placeholder), a failed `auth_code` exchange does not sign in.
 - Fallbacks: lost notification recovered by query, `PAYERROR → failed`, expiry closes at provider and locally, payment that lands before close wins.
+- Without a page view: overdue orders of both providers are closed (Alipay even if the cashier was never opened), orders within TTL and paid orders are untouched, user-scoped expiry leaves other users' orders to the sweep, and the sweep recovers a missed notification.
 
 ## 11. Demo video checklist
 
 1. Fresh clone → `cp .env.example .env.local` → `npm install && npm run dev` (show the config line in the terminal).
 2. Login with WeChat (**mock**) and with Alipay (**sandbox**, or mock — say which).
 3. Alipay sandbox order → cashier → pay with the sandbox buyer.
-4. WeChat Pay order (mock) → QR → *Simulate payment success*.
-5. Status flips to **paid** via the notification; show the `orders` and `payment_events` rows (`sqlite3 dev.db 'select * from payment_events'` or Drizzle Studio: `npx drizzle-kit studio`).
-6. Failure / cancel: *Simulate payment failure* (WeChat → `failed` via query), *Cancel order* (→ `closed`), and *Replay last notification* (stays paid, no double update).
+4. WeChat Pay order (mock) → QR on `/checkout` → *模拟支付成功* (simulate payment success).
+5. Status flips to **paid** via the notification; show the `orders` and `payment_events` rows (`sqlite3 dev.db 'select * from payment_events'` or Drizzle Studio: `npx drizzle-kit studio`). Point at the row with `source = notify`. If its outcome is `ignored`, the order query (page poll or sweep) arrived first, and the notification was still verified.
+6. Failure / cancel: *模拟支付失败* (WeChat → `failed` via query), *取消订单* (→ `closed`), and *重放通知* (stays paid, no double update).
 7. Walk through `lib/payments/wechat.ts → handleWechatNotify` and `lib/payments/orders.ts → applyVerifiedEvent`.
 
-Never show `.env.local` or `.mock-keys/` in the recording.
+Never show `.env.local` or `.mock-keys/` in the recording. Record the Alipay part in a private window. Alipay remembers its own login and earlier consent, so in a normal window it may send you straight back without showing its login page. Logging out of MockPAY does not log you out of Alipay.
 
 ## 12. Known limitations / next steps
 
 - WeChat login and Pay are only exercised in mock mode here; the real HTTP paths follow the official v3 docs but were not run against live credentials.
 - Only the **WeChat Pay public key** verification mode is supported, not the legacy downloadable *platform certificate* mode (would need `/v3/certificates` download + rotation).
-- Expiry is enforced lazily (when an order is read/polled) plus via `time_expire` at the provider. Next: a scheduled job that sweeps pending orders and queries/closes them.
+- The expiry / reconciliation sweep is an in-process timer (`lib/payments/sweeper.ts`, every 30 s), which suits this single Node.js process. With several instances or a serverless host, move it to one scheduled job (cron) calling `sweepPendingOrders()`.
+- A pending Alipay order cannot reopen the cashier from its detail page (the signed pay URL is not regenerated); the user can cancel it and buy again.
 - Single-process SQLite; for multiple instances move to Postgres and keep the same transactional pattern.
 - No rate limiting on login/notify endpoints; notify IP allow-listing not implemented.
 - Not in scope: refunds, JSAPI / in-WeChat browser login (bonus), Mini Programs.
-- `ALIPAY_AUTH_URL` sandbox host should be confirmed in the sandbox console (see §3).
+- Alipay sandbox login has been run through a Cloudflare tunnel (2026-10-25): `state` check, `auth_code` → token and sign-in work. At that time the sandbox member-info service (`alipay.user.info.share`) answered `aop.unknow-error`, so the fallback signed users in without nickname or avatar. Sandbox payment with the notification over the tunnel has not been run yet.
 
 ## Docker
 
@@ -280,3 +306,6 @@ docker run --rm -p 3000:3000 --env-file .env.local pay-demo
 - WeChat Pay resource decryption: https://pay.weixin.qq.com/docs/partner/products/notification/decryption.html
 - Alipay async notification signature string: https://global.alipay.com/doc/web/async
 - Alipay user authorisation (`publicAppAuthorize`, `alipay.system.oauth.token`): https://global.alipay.com/doc/3rdpartryqrcode/standard_2
+- Alipay sandbox (quick start, constraints, supported products, upgrade notes): https://opendocs.alipay.com/common/02kkv7
+- Alipay sandbox debugging for 获取会员信息 (sandbox authorise URL): https://opendocs.alipay.com/open/09byox
+- Next.js `allowedDevOrigins`: `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/allowedDevOrigins.md`
