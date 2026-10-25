@@ -138,6 +138,8 @@ sequenceDiagram
   A->>B: 302 /dashboard + Set-Cookie sid (httpOnly, SameSite=Lax, Secure on https)
 ```
 
+Signing in again with the same identity reuses the local user and refreshes its name and avatar: the dashboard's main profile follows the identity used for the most recent sign-in. Linking a second provider only adds that identity's `accounts` row, and an empty or missing field from the provider never clears a stored value.
+
 ### Payment
 
 ```mermaid
@@ -227,7 +229,7 @@ lib/
   payments/{wechat,alipay}.ts  notify handlers (framework-agnostic, tested)
   payments/sync.ts          query fallback, expiry, close
   mock/                     mock keys + mock provider behaviour
-tests/                      43 unit tests (signatures, decryption, notify handlers, idempotency, expiry, env)
+tests/                      49 unit tests (signatures, decryption, notify handlers, idempotency, expiry, profiles, env)
 drizzle/                    SQL migrations
 ```
 
@@ -237,7 +239,8 @@ drizzle/                    SQL migrations
 
 - WeChat: Authorization header format, request-signature verifiability, notification verification (tampered body, foreign key, unknown serial, stale timestamp, missing headers, sign probe), AES-GCM round-trip and authentication failures.
 - Alipay: sign-content construction (incl. the example string from Alipay's documentation), RSA2 notify verification (tampering, app-key forgery, non-RSA2, missing sign, form round-trip with non-ASCII), response-node extraction and verification.
-- Notify handlers: paid + exact reply, **same notification twice → one update**, **5 concurrent deliveries → one update**, second distinct notification ignored, bad signature leaves order pending, amount mismatch rejected, Alipay `TRADE_CLOSED`.
+- Notify handlers: paid + exact reply, **same notification twice → one update**, **5 concurrent deliveries → one update**, second distinct notification ignored, bad signature leaves order pending, amount mismatch rejected, Alipay `TRADE_CLOSED`, Alipay `seller_id` missing or foreign → `fail` (validly signed).
+- Users: re-login updates the same local user's profile, missing fields keep stored values, linking leaves the main profile alone.
 - Fallbacks: lost notification recovered by query, `PAYERROR → failed`, expiry closes at provider and locally, payment that lands before close wins.
 
 ## 11. Demo video checklist
