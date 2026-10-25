@@ -7,13 +7,15 @@ import { alipay } from "@/lib/alipay/client";
 import { wechatPay } from "@/lib/wechat/pay-client";
 import { ProviderError } from "./errors";
 import { alipayStateToStatus } from "./alipay";
-import { applyVerifiedEvent, getOrder, markClosedLocally, touchQueried } from "./orders";
+import { applyVerifiedEvent, getOrder, listOverduePendingOrders, listPendingOrders, markClosedLocally, touchQueried } from "./orders";
 import { applyWechatTransaction } from "./wechat";
 
 /** Minimum gap between active queries for the same order (the page polls every 2s). */
 const QUERY_INTERVAL_MS = 5_000;
 /** Don't start querying until the user has had a moment to pay. */
 const QUERY_GRACE_MS = 3_000;
+/** Pending orders the background sweep reconciles with the provider per pass. */
+const SWEEP_QUERY_BATCH = 20;
 
 /**
  * Fallback for missed notifications ("主动查询"): ask the provider for the
@@ -88,4 +90,34 @@ export async function refreshOrder(order: Order, opts: { force?: boolean } = {})
     log.warn("order.refresh_failed", { orderId: order.id, message: e instanceof Error ? e.message : String(e) });
   }
   return (await getOrder(order.id)) ?? order;
+}
+
+/**
+ * Close every pending order whose TTL has passed — at the provider, then locally —
+ * without anyone opening it. With `userId`, only that user's orders (used before
+ * rendering their lists, so a list never shows an expired order as pending).
+ * Returns how many orders left the pending state.
+ */
+export async function expireOverdueOrders(userId?: string): Promise<number> {
+  let settled = 0;
+  for (const order of await listOverduePendingOrders(new Date(), userId)) {
+    try {
+      const after = await closeOrder(order, "expired");
+      if (after && after.status !== "pending") settled++;
+    } catch (e) {
+      // Left pending; the next sweep or page view retries.
+      log.warn("order.expire_failed", { orderId: order.id, message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return settled;
+}
+
+/**
+ * One background pass: expire overdue orders, then reconcile the remaining pending
+ * ones with the provider (missed notifications), least recently queried first.
+ * Everything goes through the same idempotent state machine as notify.
+ */
+export async function sweepPendingOrders(): Promise<void> {
+  await expireOverdueOrders();
+  for (const order of await listPendingOrders(SWEEP_QUERY_BATCH)) await refreshOrder(order);
 }

@@ -1,5 +1,7 @@
 // Validate configuration at boot so a missing variable fails loudly, not on the first payment.
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import { EnvError, env } from "./lib/env";
+import { startOrderSweeper } from "./lib/payments/sweeper";
 
 try {
   const e = env();
@@ -11,3 +13,6 @@ try {
   }
   throw err;
 }
+
+// Expire unpaid orders and recover missed notifications without waiting for a page view.
+if (process.env.NEXT_PHASE !== PHASE_PRODUCTION_BUILD) startOrderSweeper();

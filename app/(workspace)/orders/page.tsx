@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Hint, PageHeading } from "@/components/ui/primitives";
 import { requireSession } from "@/lib/auth/session";
 import { getOrderByOutTradeNo, listOrdersForUser } from "@/lib/payments/orders";
+import { expireOverdueOrders } from "@/lib/payments/sync";
 
 export const metadata: Metadata = { title: "我的订单" };
 
@@ -22,6 +23,8 @@ export default async function Orders({ searchParams }: { searchParams: Promise<{
     const o = await getOrderByOutTradeNo("alipay", out_trade_no);
     if (o && o.userId === user.id) redirect(`/orders/${o.id}?from=return`);
   }
+  // Close this user's overdue orders before listing, so the list never shows an expired order as pending.
+  await expireOverdueOrders(user.id);
   const orders = await listOrdersForUser(user.id);
 
   return (

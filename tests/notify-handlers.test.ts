@@ -9,7 +9,7 @@ import { mockKeys } from "@/lib/mock/keys";
 import { buildMockWechatSuccessNotify, failMockWechatTrade } from "@/lib/mock/wechat-provider";
 import { handleAlipayNotify } from "@/lib/payments/alipay";
 import { applyVerifiedEvent } from "@/lib/payments/orders";
-import { closeOrder, refreshOrder } from "@/lib/payments/sync";
+import { closeOrder, expireOverdueOrders, refreshOrder, sweepPendingOrders } from "@/lib/payments/sync";
 import { handleWechatNotify } from "@/lib/payments/wechat";
 import { wechatPay } from "@/lib/wechat/pay-client";
 import { eventsFor, makeOrder, mockTrade, reload, setMockTrade } from "./helpers";
@@ -214,5 +214,54 @@ describe("query fallback and expiry", () => {
     await setMockTrade(order.outTradeNo, { state: "TRADE_SUCCESS" });
     const o = await closeOrder(order, "cancelled_by_user");
     expect(o?.status).toBe("paid");
+  });
+});
+
+describe("expiry and reconciliation without a page view", () => {
+  const backdate = async (orderId: string, patch: { expiresAt?: Date; createdAt?: Date }) =>
+    (await db()).update(schema.orders).set(patch).where(eq(schema.orders.id, orderId)).run();
+  const pastDeadline = () => ({ expiresAt: new Date(Date.now() - 1000) });
+
+  it("closes overdue orders of both providers that nobody opened", async () => {
+    const wx = await wechatOrder();
+    const ali = await makeOrder("alipay"); // cashier never opened, so Alipay has no trade yet
+    await backdate(wx.id, pastDeadline());
+    await backdate(ali.id, pastDeadline());
+    expect(await expireOverdueOrders()).toBeGreaterThanOrEqual(2);
+    expect((await reload(wx.id)).status).toBe("closed");
+    expect((await mockTrade(wx.outTradeNo)).state).toBe("CLOSED");
+    expect(await reload(ali.id)).toMatchObject({ status: "closed", failureReason: "expired" });
+  });
+
+  it("leaves orders within their TTL and already-paid orders untouched", async () => {
+    const fresh = await wechatOrder();
+    const paid = await wechatOrder();
+    const n = await wechatNotify(paid.outTradeNo);
+    await handleWechatNotify(n.body, new Headers(n.headers));
+    await backdate(paid.id, pastDeadline());
+    await expireOverdueOrders();
+    expect((await reload(fresh.id)).status).toBe("pending");
+    expect((await reload(paid.id)).status).toBe("paid");
+  });
+
+  it("scoped to one user, it leaves other users' overdue orders to the sweep", async () => {
+    const mine = await makeOrder("alipay");
+    const theirs = await makeOrder("alipay"); // makeOrder creates a new user each time
+    await backdate(mine.id, pastDeadline());
+    await backdate(theirs.id, pastDeadline());
+    await expireOverdueOrders(mine.userId);
+    expect((await reload(mine.id)).status).toBe("closed");
+    expect((await reload(theirs.id)).status).toBe("pending");
+    await sweepPendingOrders();
+    expect((await reload(theirs.id)).status).toBe("closed");
+  });
+
+  it("the sweep recovers a missed notification for an order nobody is watching", async () => {
+    const order = await wechatOrder();
+    await wechatNotify(order.outTradeNo); // provider is paid; the notification never arrives
+    await backdate(order.id, { createdAt: new Date(Date.now() - 10 * 60_000) }); // oldest, past the query grace period
+    await sweepPendingOrders();
+    expect((await reload(order.id)).status).toBe("paid");
+    expect((await eventsFor(order.outTradeNo))[0]).toMatchObject({ source: "query", outcome: "applied" });
   });
 });

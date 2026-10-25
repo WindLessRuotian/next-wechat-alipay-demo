@@ -8,6 +8,7 @@ import { accountsForUser } from "@/lib/auth/users";
 import { TEST_ITEM } from "@/lib/catalog";
 import { fenToYuan } from "@/lib/money";
 import { listOrdersForUser } from "@/lib/payments/orders";
+import { expireOverdueOrders } from "@/lib/payments/sync";
 import { ERROR_MESSAGES, ITEM_NAME, providerLabel } from "@/lib/ui";
 
 export const metadata: Metadata = { title: "控制台" };
@@ -53,6 +54,8 @@ function Stat({ label, icon, value, unit, meta, highlight }: { label: string; ic
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ error?: string; linked?: string }> }) {
   const { user, provider } = await requireSession();
   const { error, linked } = await searchParams;
+  // Close this user's overdue orders first, so stats and recent orders never show an expired order as pending.
+  await expireOverdueOrders(user.id);
   const [accounts, orders] = await Promise.all([accountsForUser(user.id), listOrdersForUser(user.id)]);
 
   // Statistics come from this user's own orders only.

@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { db, schema, withWriteTransaction } from "@/lib/db";
 import type { Order, OrderStatus, Provider } from "@/lib/db/schema";
 import { newOutTradeNo } from "@/lib/crypto";
@@ -47,6 +47,24 @@ export async function getOrderForUser(orderId: string, userId: string): Promise<
 
 export async function listOrdersForUser(userId: string): Promise<Order[]> {
   return (await db()).select().from(schema.orders).where(eq(schema.orders.userId, userId)).orderBy(desc(schema.orders.createdAt)).all();
+}
+
+/** Pending orders whose TTL has passed, oldest deadline first; optionally only one user's. */
+export async function listOverduePendingOrders(now: Date, userId?: string, limit = 100): Promise<Order[]> {
+  const conditions = [eq(schema.orders.status, "pending"), lte(schema.orders.expiresAt, now)];
+  if (userId) conditions.push(eq(schema.orders.userId, userId));
+  return (await db()).select().from(schema.orders).where(and(...conditions)).orderBy(asc(schema.orders.expiresAt)).limit(limit).all();
+}
+
+/** Pending orders, least recently queried first (SQLite sorts NULL first, so never-queried orders lead), then oldest. */
+export async function listPendingOrders(limit: number): Promise<Order[]> {
+  return (await db())
+    .select()
+    .from(schema.orders)
+    .where(eq(schema.orders.status, "pending"))
+    .orderBy(asc(schema.orders.lastQueriedAt), asc(schema.orders.createdAt))
+    .limit(limit)
+    .all();
 }
 
 export async function getOrderByOutTradeNo(provider: Provider, outTradeNo: string): Promise<Order | undefined> {
