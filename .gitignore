@@ -1,0 +1,29 @@
+# deps / build
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# env files — only the example is committed
+.env*
+!.env.example
+
+# keys & certificates — never commit
+certs/*
+!certs/.gitkeep
+*.pem
+*.key
+*.p12
+.mock-keys/
+
+# local database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# misc
+.DS_Store
+npm-debug.log*
+coverage/
