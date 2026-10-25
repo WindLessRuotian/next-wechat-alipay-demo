@@ -91,7 +91,16 @@ export class AlipayClient {
       this.commonParams(method, { ...opts.params, biz_content: opts.bizContent ? JSON.stringify(opts.bizContent) : undefined }),
       this.cfg.appPrivateKey,
     );
-    const raw = await this.transport(this.cfg.gateway, signed);
+    // Method and latency only: never parameters, codes or tokens.
+    const started = Date.now();
+    let raw: string;
+    try {
+      raw = await this.transport(this.cfg.gateway, signed);
+    } catch (e) {
+      log.warn("alipay.transport_failed", { method, ms: Date.now() - started, message: e instanceof Error ? e.message : String(e) });
+      throw e;
+    }
+    log.info("alipay.api_call", { method, ms: Date.now() - started });
     const v = verifyResponse<T>(raw, method, this.cfg.alipayPublicKey);
     if (!v.ok) {
       // An unsigned error_response (e.g. invalid app_id) still tells us *why* it failed.
