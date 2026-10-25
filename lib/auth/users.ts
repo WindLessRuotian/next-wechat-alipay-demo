@@ -22,6 +22,10 @@ export class LinkError extends Error {
  * Find-or-create the local user for an external identity, keyed by
  * (provider, provider_user_id). With `linkToUserId`, attach the identity to
  * that existing user instead (account linking).
+ *
+ * Profile rule: `users.name` / `users.avatar_url` mirror the identity the user
+ * last signed in with. Linking only writes that identity's `accounts` row, and
+ * a field the provider did not return never clears a stored value.
  */
 export async function upsertUserFromProfile(p: ProviderProfile, linkToUserId?: string): Promise<User> {
   return withWriteTransaction(async (tx): Promise<User> => {
@@ -36,10 +40,17 @@ export async function upsertUserFromProfile(p: ProviderProfile, linkToUserId?: s
       if (linkToUserId && existing.userId !== linkToUserId) throw new LinkError("linked_to_other_user");
       await tx
         .update(schema.accounts)
-        .set({ nickname: p.nickname ?? existing.nickname, avatarUrl: p.avatarUrl ?? existing.avatarUrl, unionId: p.unionId ?? existing.unionId, updatedAt: now })
+        .set({ nickname: p.nickname || existing.nickname, avatarUrl: p.avatarUrl || existing.avatarUrl, unionId: p.unionId ?? existing.unionId, updatedAt: now })
         .where(eq(schema.accounts.id, existing.id))
         .run();
-      return (await tx.select().from(schema.users).where(eq(schema.users.id, existing.userId)).get())!;
+      const user = (await tx.select().from(schema.users).where(eq(schema.users.id, existing.userId)).get())!;
+      if (linkToUserId) return user;
+      return (await tx
+        .update(schema.users)
+        .set({ name: p.nickname || user.name, avatarUrl: p.avatarUrl || user.avatarUrl })
+        .where(eq(schema.users.id, user.id))
+        .returning()
+        .get())!;
     }
 
     let userId = linkToUserId;
