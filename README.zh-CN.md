@@ -341,7 +341,8 @@ drizzle/                    SQL 迁移
   - **登录：** `state` 校验、`auth_code` 换取令牌、登录都正常。沙箱会员信息服务（`alipay.user.info.share`）一直返回 `aop.unknow-error`，所以通过降级逻辑登录，暂时没有昵称和头像，服务恢复后会自动补全。
   - **支付：** 订单 `d55b2a3a…`（0.01 元）于 17:06:36 创建，用沙箱买家账号在收银台完成付款。支付宝的异步通知经隧道送达，RSA2 验签通过，记为 `source = notify`、`event_type = TRADE_SUCCESS`、`outcome = applied`；订单状态变为 `paid`，`paid_at` 为 17:06:51。28 位交易号（`20261026…`）和 34 位 `notify_id`（`2026102601…`）都是支付宝真实的格式，不是 Mock 生成的。
   - **过期：** 订单 `213c4495…` 打开了收银台但未付款，在 15 分钟期限到达约 23 秒后，通过查单被关闭（`QUERY.TRADE_CLOSED`，`applied`）。
-  - **尚未在沙箱中运行：** 用户主动取消（对真实交易调用 `alipay.trade.close`）和手机网站支付（`alipay.trade.wap.pay`，加分项）。
+  - **用户主动取消（录制演示视频时，2026-10-26）：** 在沙箱模式下从订单详情页取消了一笔支付宝订单，订单关闭，`failure_reason = cancelled_by_user`。当时还没有打开收银台，支付宝侧尚无这笔交易，`alipay.trade.close` 按“交易不存在即已关闭”处理。
+  - **手机网站支付（`alipay.trade.wap.pay`，加分项）：** 沙箱只能在沙箱版支付宝 App（仅 Android 7–13）中完成，在手机浏览器或 iPhone 上无法完成。
 
 ## Docker
 

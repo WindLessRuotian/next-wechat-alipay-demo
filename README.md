@@ -306,7 +306,8 @@ Never show `.env.local` or `.mock-keys/` in the recording. Record the Alipay par
   - **Login:** the `state` check, `auth_code` → token and sign-in all work. The sandbox member-info service (`alipay.user.info.share`) kept answering `aop.unknow-error`, so the fallback signed users in without nickname or avatar; they fill in once that service recovers.
   - **Payment:** order `d55b2a3a…` (0.01 CNY) was created at 17:06:36 and paid in the sandbox cashier with the buyer account. Alipay's async notification reached the tunnel, passed RSA2 verification and was recorded as `source = notify`, `event_type = TRADE_SUCCESS`, `outcome = applied`; the order became `paid` with `paid_at` 17:06:51. The 28-digit trade number (`20261026…`) and the 34-character `notify_id` (`2026102601…`) have Alipay's real formats, not the mock's.
   - **Expiry:** order `213c4495…` opened the cashier and was left unpaid. About 23 s after its 15-minute deadline it closed through the order query (`QUERY.TRADE_CLOSED`, `applied`).
-  - **Not yet run in the sandbox:** a user-initiated cancel (`alipay.trade.close` on a live trade) and mobile web payment (`alipay.trade.wap.pay`, bonus).
+  - **User cancel (demo recording, 2026-10-26):** an Alipay order was cancelled from its detail page in sandbox mode and closed with `failure_reason = cancelled_by_user`. The cashier had not been opened, so Alipay had no trade yet and `alipay.trade.close` was treated as already closed.
+  - **Mobile web payment (`alipay.trade.wap.pay`, bonus):** the sandbox only completes it inside the sandbox Alipay app (Android 7–13), so it cannot be finished in a phone browser or on an iPhone.
 
 ## Docker
 
