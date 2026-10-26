@@ -1,5 +1,7 @@
 # Next.js × WeChat & Alipay — login and payment demo
 
+**Demo video (3–5 min, voice-over):** https://youtu.be/1UNmihguaSg — WeChat runs in mock mode, Alipay in the real sandbox.
+
 A small Next.js (App Router, TypeScript strict) app where a user signs in with **WeChat** (website QR login) or **Alipay**, buys a fixed **0.01 CNY** test item with **WeChat Pay (API v3 Native)** or **Alipay (PC website payment, mobile web as bonus)**, and sees the order status change **only** when the server receives a verified asynchronous notification (or, as a fallback, a verified order query).
 
 | Area | Status |
