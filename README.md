@@ -109,6 +109,14 @@ Keys never go into the repository: `.env*` (except `.env.example`), `certs/*`, `
 
 Set `WECHAT_MODE=live` (or `sandbox`, which behaves the same) and use the 0.01 CNY item.
 
+### Alipay live mode
+
+1. On the Alipay Open Platform (production, not the sandbox), create a **网页/移动应用** under a company or individual merchant account and pass its review. Add the products **电脑网站支付** (and **手机网站支付** for the mobile bonus) plus **获取会员信息** for login, then sign the product agreements.
+2. **开发信息 → 接口加签方式 → 自定义密钥 → 公钥模式**: generate an RSA2 (2048) key pair with the *支付宝开放平台密钥工具*, upload the app public key, keep the app private key → `ALIPAY_PRIVATE_KEY`; copy the shown **支付宝公钥** → `ALIPAY_PUBLIC_KEY`. Production apps have no system default keys.
+3. Set the **授权回调地址** to `https://<your-domain>/api/auth/alipay/callback` and note the APPID → `ALIPAY_APP_ID` and the merchant PID (2088…) → `ALIPAY_SELLER_ID` (optional).
+4. In `.env.local`: `ALIPAY_MODE=live`, `ALIPAY_GATEWAY=https://openapi.alipay.com/gateway.do`, `ALIPAY_AUTH_URL=https://openauth.alipay.com/oauth2/publicAppAuthorize.htm`, and an `APP_URL` on a public HTTPS domain so notifications reach `/api/pay/alipay/notify`. Restart and check the boot line shows `Alipay: live`.
+5. Test with the 0.01 CNY item; real money moves. No code changes are needed between sandbox and live.
+
 ## 5. Exposing callbacks with a tunnel
 
 Providers cannot call `localhost`. Expose port 3000 and use the public URL as `APP_URL`:
@@ -289,6 +297,7 @@ Never show `.env.local` or `.mock-keys/` in the recording. Record the Alipay par
 - Single-process SQLite; for multiple instances move to Postgres and keep the same transactional pattern.
 - No rate limiting on login/notify endpoints; notify IP allow-listing not implemented.
 - Not in scope: refunds, JSAPI / in-WeChat browser login (bonus), Mini Programs.
+- Provider-side issues that are not caused by this code (why WeChat runs in mock mode, the Alipay sandbox member-info outage) are documented with evidence in [KNOWN_ISSUES.zh-CN.md](KNOWN_ISSUES.zh-CN.md).
 - Alipay sandbox, verified end to end through a Cloudflare tunnel on 2026-10-25 (times UTC, evidence from `orders` / `payment_events` in `dev.db`):
   - **Login:** the `state` check, `auth_code` → token and sign-in all work. The sandbox member-info service (`alipay.user.info.share`) kept answering `aop.unknow-error`, so the fallback signed users in without nickname or avatar; they fill in once that service recovers.
   - **Payment:** order `d55b2a3a…` (0.01 CNY) was created at 17:06:36 and paid in the sandbox cashier with the buyer account. Alipay's async notification reached the tunnel, passed RSA2 verification and was recorded as `source = notify`, `event_type = TRADE_SUCCESS`, `outcome = applied`; the order became `paid` with `paid_at` 17:06:51. The 28-digit trade number (`20261026…`) and the 34-character `notify_id` (`2026102601…`) have Alipay's real formats, not the mock's.
